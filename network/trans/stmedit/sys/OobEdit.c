@@ -18,6 +18,8 @@ Environment:
 #include "StreamEdit.h"
 #include "OobEdit.tmh"
 
+#include <stdlib.h>
+
 #if defined _MODULE_ID
 #undef _MODULE_ID
 #endif
@@ -138,6 +140,8 @@ StreamOobQueueUpIncomingData(
                         streamData);
 
     Status = FwpsCloneStreamData(streamData, NULL, NULL, 0, &ClonedNbl);
+  //  Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
+
     if (NT_SUCCESS(Status))
     {
         PLW_QUEUE Queue;

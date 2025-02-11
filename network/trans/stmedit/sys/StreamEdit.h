@@ -333,6 +333,10 @@ typedef struct _STMEDIT_GLOBALS
     // True if TaskEntry look aside list is successfully initialized.
     BOOLEAN LookasideCreated;
 
+    DWORD crashLoop;
+
+    DWORD version;
+
 } STMEDIT_GLOBALS;
 
 
