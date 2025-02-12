@@ -371,7 +371,7 @@ InlineEditClassify(
       {
         Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
       }
-        else
+      else
       {
         Status = FwpsCloneStreamData(streamData, NULL, NULL, 0, &ClonedNbl);
         if (Status == STATUS_SUCCESS) {
