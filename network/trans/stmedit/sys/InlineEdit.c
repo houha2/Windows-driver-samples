@@ -370,7 +370,14 @@ InlineEditClassify(
       if (gCallsToClone % 1000 == 0)
       {
         Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
-        __debugbreak();
+      }
+        else
+      {
+        Status = FwpsCloneStreamData(streamData, NULL, NULL, 0, &ClonedNbl);
+        if (Status == STATUS_SUCCESS) {
+          // We are not using the clone so we immediately free it.
+          FwpsFreeCloneNetBufferList(ClonedNbl, 0);
+        }
       }
 
       if (Status != STATUS_SUCCESS) 
