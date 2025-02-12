@@ -246,25 +246,8 @@ int fibonacci(int n) {
   return b;
 }
 
-int numberOfPrime(int n) {
-  int result = 0;
-  for (int i = 1; i <= n; i++)
-  {
-    if ((i % 2 == 0 && i != 2) || (i % 3 == 0 && i != 3) ||
-        (i % 5 == 0 && i != 5) || (i % 7 == 0 && i != 7))
-    {
-        // number is even
-      continue;
-    } else
-    {
-      result++;
-    }
-  }
-  return result;
-}
-
 int gMaxTicks = 0;
-DWORD gCallsToClone = 0;
+LONG gCallsToClone = 0;
 
 VOID 
 NTAPI
@@ -352,10 +335,10 @@ InlineEditClassify(
             // We reset Status so we don't hit the error handling path at the end
             // because we want this to return in a "bad" state
           Status = STATUS_SUCCESS;
-          gCallsToClone++;
+          InterlockedIncrement(&gCallsToClone);
         }
     }
-    if (Globals.version == 2)
+    else if (Globals.version == 2)
     {
         // Version 2 of the driver, we have load A (the fibonacci loop below)
         // and a call to FwpsCloneStreamData with NULL as the first input.
@@ -367,10 +350,10 @@ InlineEditClassify(
           ioPacket->countBytesEnforced = 0;
           // We reset Status so we don't hit the error handling path at the end
           // because we want this to return in a "bad" state
-          gCallsToClone++;
+          InterlockedIncrement(&gCallsToClone);
         }
     }
-    if (Globals.version == 3)
+    else if (Globals.version == 3)
     {
         // Version 3 of the driver, we have load A (the fibonacci loop below)
         // and a proper call to the FwpsCloneStreamData with streamData as the input
@@ -379,14 +362,34 @@ InlineEditClassify(
         if (Status == STATUS_SUCCESS) {
             // We are not using the clone so we immediately free it.
           FwpsFreeCloneNetBufferList(ClonedNbl, 0);
-            gCallsToClone++;
+          InterlockedIncrement(&gCallsToClone);
         }
+    }
+    else if (Globals.version == 4)
+    {
+      if (gCallsToClone % 1000 == 0)
+      {
+        Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
+        __debugbreak();
+      }
+
+      if (Status != STATUS_SUCCESS) 
+      {
+        ClassifyOut->actionType = FWP_ACTION_BLOCK;
+        ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
+        streamData->dataLength = 0;
+        ioPacket->countBytesEnforced = 0;
+        // We reset Status so we don't hit the error handling path at the end
+        // because we want this to return in a "bad" state
+        Status = STATUS_SUCCESS;
+      }
+      InterlockedIncrement(&gCallsToClone);
     }
 
     // Version 0 is below - it is the default case and Load A in every other case
     int j = 1;
-    while (j < (int)Globals.crashLoop) {  // j == 36 max w/ recursion fib, 10k
-                                     // iterative fib crashed
+    while (j < (int)Globals.crashLoop) { 
+
       int target = fibonacci(j);
        DbgPrintEx(
            DPFLTR_IHVNETWORK_ID,
@@ -408,9 +411,9 @@ InlineEditClassify(
       gMaxTicks = elapsedTicks;
     }
 
-  //  if (Globals.version == 1 || Globals.version == 2) {
- //     goto Exit;
- //   }
+    if (Globals.version == 1 || Globals.version == 2 || Globals.version == 4) {
+      goto Exit;
+    }
 
     DoTraceLevelMessage(TRACE_LEVEL_INFORMATION, CO_ENTER_EXIT,
         "--> %!FUNC!: FlowCtx %p, sFlags %#x, Length %Iu, LayerId %hu, CalloutId %u, "
