@@ -114,7 +114,7 @@ StmEditDeReferenceFlow(
         }
         KeReleaseInStackQueuedSpinLock(&LockHandle);
 
-        if (!FlowContext->bEditInline) 
+        if (!FlowContext->bEditInline || TRUE) 
 		{
             NT_ASSERT(IsListEmpty(&FlowContext->OobInfo.OutgoingDataQueue));
         }
@@ -221,7 +221,7 @@ StreamEditRemoveFlowCtx(
 
     NT_ASSERT(Context);
 
-    if (Context->bEditInline) 
+    if (Context->bEditInline || TRUE) 
 	{
         (VOID) InlineEditFlushData(Context, 0, Context->PartialSFlags);
     }
@@ -339,6 +339,7 @@ StreamEditCommonStreamClassify(
     //
     StmEditReferenceFlow(FlowContext, _MODULE_ID, __LINE__);
 
+    /*
     if (FlowContext->bEditInline) 
     {
         InlineEditClassify(
@@ -351,7 +352,7 @@ StreamEditCommonStreamClassify(
             );
     }
     else
-    {
+    {*/
         OobEditClassify (
             InFixedValues,
             InMetaValues,
@@ -360,7 +361,7 @@ StreamEditCommonStreamClassify(
 			InFlowContext,
             ClassifyOut
             );
-    }
+  //  }
 
     StmEditDeReferenceFlow(FlowContext, _MODULE_ID, __LINE__);
 }
@@ -1103,7 +1104,13 @@ StreamEditInitConfig(
     DECLARE_CONST_UNICODE_STRING(inspectionRemotePortKey, L"InspectionRemotePort");
     DECLARE_CONST_UNICODE_STRING(multiCalloutKey, L"MultipleCallouts");
     DECLARE_CONST_UNICODE_STRING(inspectionDirectionKey, L"InspectionDirection");
+    DECLARE_CONST_UNICODE_STRING(crashLoopKey, L"CrashLoop");
+    DECLARE_CONST_UNICODE_STRING(versionKey, L"Version");
+    DECLARE_CONST_UNICODE_STRING(bytesKey, L"Bytes");
+    DECLARE_CONST_UNICODE_STRING(actionKey, L"Action");
+    DECLARE_CONST_UNICODE_STRING(filterActionKey, L"Filter");
     DECLARE_CONST_UNICODE_STRING(thresholdKey, L"BusyThreshold");
+
 
     UNICODE_STRING stringValue;
     WCHAR buffer[STR_MAX_SIZE];
@@ -1120,6 +1127,8 @@ StreamEditInitConfig(
     Globals.InspectionDirection = FWP_DIRECTION_MAX; // Inbound + outbound
     Globals.BusyThreshold = 0x4000; // == 16K;
     Globals.MultipleCallouts = TRUE;
+    Globals.crashLoop = 10000;
+    Globals.version = 0;
 
     Globals.StringToFind[0] = Globals.StringX[0] = Globals.StringToReplace[0] = '\0';
 
@@ -1145,6 +1154,27 @@ StreamEditInitConfig(
 			if (Globals.InspectionDirection > FWP_DIRECTION_MAX)
 				Globals.InspectionDirection = FWP_DIRECTION_MAX;
 		}
+
+        if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &crashLoopKey, &ulongValue)))
+        {
+           Globals.crashLoop = (DWORD)ulongValue; 
+        }
+
+	    if (NT_SUCCESS( WdfRegistryQueryULong(hKey, &versionKey, &ulongValue))) {
+          Globals.version = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &bytesKey, &ulongValue))) {
+          Globals.bytesEnforced = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &actionKey, &ulongValue))) {
+          Globals.action = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &filterActionKey, &ulongValue))) {
+          Globals.filterAction = (DWORD)ulongValue;
+        }
 
 		if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &multiCalloutKey, &ulongValue)))
 		{

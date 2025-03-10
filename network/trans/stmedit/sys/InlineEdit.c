@@ -17,10 +17,16 @@ Environment:
 #include "StreamEdit.h"
 #include "InlineEdit.tmh"
 
+#include <stdlib.h>
+
+//#include <vcruntime_c11_stdatomic.h>
+
 #if defined _MODULE_ID
 #undef _MODULE_ID
 #endif
 #define _MODULE_ID  'I'
+
+KSPIN_LOCK gStreamSpinLock;
 
 NTSTATUS
 InlineEditFlushData(
@@ -229,6 +235,19 @@ InlineInjectToken(
     return Status;
 }
 
+int fibonacci(int n) {
+  int a = 0, b = 1;
+    int next = 0;
+  for (int i = 1; i <= n; ++i) {
+    next = a + b;
+    a = b;
+    b = next;
+  }
+  return b;
+}
+
+int gMaxTicks = 0;
+LONG gCallsToClone = 0;
 
 VOID 
 NTAPI
@@ -288,6 +307,98 @@ InlineEditClassify(
 
     ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)LayerData;
     streamData = ioPacket->streamData;
+
+    KLOCK_QUEUE_HANDLE lockHandle;
+
+    LARGE_INTEGER startTick;
+
+    int Inc = KeQueryTimeIncrement();
+    KeQueryTickCount(&startTick);
+
+    int CurrTime = (int)startTick.LowPart * Inc;
+    KeAcquireInStackQueuedSpinLock(&gStreamSpinLock, &lockHandle);
+
+   NET_BUFFER_LIST* ClonedNbl = NULL;
+
+    if (Globals.version > 0)
+    {
+        // We want to do something wrong to force the driver into a bad return state
+        // to exercise recovery and failure paths in WFP
+      Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
+        if (Status != STATUS_SUCCESS) {
+
+          if (Globals.bytesEnforced == 1) {
+            ioPacket->countBytesEnforced = 0;
+          } else {
+            ioPacket->countBytesEnforced = streamData->dataLength;
+          }
+
+           if (Globals.version == 1)
+           {
+                streamData->dataLength = 0;
+           }
+
+            switch (Globals.action) {
+              case 1:  // FWPS_STREAM_ACTION_ALLOW_CONNECTION
+                ioPacket->streamAction = FWPS_STREAM_ACTION_ALLOW_CONNECTION;
+                break;
+              case 2:  // FWPS_STREAM_ACTION_NEED_MORE_DATA
+                ioPacket->streamAction = FWPS_STREAM_ACTION_NEED_MORE_DATA;
+                break;
+              case 3:  // FWPS_STREAM_ACTION_DROP_CONNECTION
+                ioPacket->streamAction = FWPS_STREAM_ACTION_DROP_CONNECTION;
+                break;
+              case 4:
+              default:  // FWPS_STREAM_ACTION_NONE1
+                ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
+                if (Globals.filterAction == 1) {
+                  ClassifyOut->actionType = FWP_ACTION_CONTINUE;
+                } else if (Globals.filterAction == 2) {
+                  ClassifyOut->actionType = FWP_ACTION_PERMIT;
+                } else if (Globals.filterAction == 3) {
+                  ClassifyOut->actionType = FWP_ACTION_BLOCK;
+                } else {
+                  ClassifyOut->actionType = FWP_ACTION_NONE;
+                }
+                break;
+            }
+
+          // We reset Status so we don't hit the error handling path at the end
+          // because we want this to return in a "bad" state
+          Status = STATUS_SUCCESS;
+          InterlockedIncrement(&gCallsToClone);
+        }
+
+    }
+
+    // Version 0 is below - it is the default case and Load A in every other case
+    int j = 1;
+    while (j < (int)Globals.crashLoop) { 
+
+      int target = fibonacci(j);
+      if (j % 100 == 0)
+      {
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+                   " !!!! PerformBasicStreamInjection "
+                   ": fibs "
+                   "[status: %#x], j == %d\n",
+                   target, j);
+      }
+      j++;
+    }
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    LARGE_INTEGER stopTick;
+    KeQueryTickCount(&stopTick);
+    int endTime = (int)stopTick.LowPart * Inc;
+    int elapsedTicks = endTime - CurrTime;
+    if (elapsedTicks > gMaxTicks)
+    {
+      gMaxTicks = elapsedTicks;
+    }
+
+    if (Globals.version >= 1) {
+      goto Exit;
+    }
 
     DoTraceLevelMessage(TRACE_LEVEL_INFORMATION, CO_ENTER_EXIT,
         "--> %!FUNC!: FlowCtx %p, sFlags %#x, Length %Iu, LayerId %hu, CalloutId %u, "
@@ -544,7 +655,6 @@ InlineEditClassify(
     }; // switch
 
 Exit:
-
     if (!NT_SUCCESS (Status))
     {
         ioPacket->streamAction = FWPS_STREAM_ACTION_DROP_CONNECTION;
