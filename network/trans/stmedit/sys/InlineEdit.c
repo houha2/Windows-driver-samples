@@ -320,77 +320,55 @@ InlineEditClassify(
 
    NET_BUFFER_LIST* ClonedNbl = NULL;
 
-    if (Globals.version == 1)
+    if (Globals.version > 0)
     {
-        // Version 1 of the driver, we have load A (the fibonacci loop below)
-        // and a call to FwpsCloneStreamData with NULL as the first input.
-        // We also do improper error handling.
-        Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
-        if (Status != STATUS_SUCCESS)
-        {
-          ClassifyOut->actionType = FWP_ACTION_BLOCK;
-          ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
-          streamData->dataLength = 0;
-          ioPacket->countBytesEnforced = 0;
-            // We reset Status so we don't hit the error handling path at the end
-            // because we want this to return in a "bad" state
+        // We want to do something wrong to force the driver into a bad return state
+        // to exercise recovery and failure paths in WFP
+      Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
+        if (Status != STATUS_SUCCESS) {
+
+          if (Globals.bytesEnforced == 1) {
+            ioPacket->countBytesEnforced = 0;
+          } else {
+            ioPacket->countBytesEnforced = streamData->dataLength;
+          }
+
+           if (Globals.version == 1)
+           {
+                streamData->dataLength = 0;
+           }
+
+            switch (Globals.action) {
+              case 1:  // FWPS_STREAM_ACTION_ALLOW_CONNECTION
+                ioPacket->streamAction = FWPS_STREAM_ACTION_ALLOW_CONNECTION;
+                break;
+              case 2:  // FWPS_STREAM_ACTION_NEED_MORE_DATA
+                ioPacket->streamAction = FWPS_STREAM_ACTION_NEED_MORE_DATA;
+                break;
+              case 3:  // FWPS_STREAM_ACTION_DROP_CONNECTION
+                ioPacket->streamAction = FWPS_STREAM_ACTION_DROP_CONNECTION;
+                break;
+              case 4:
+              default:  // FWPS_STREAM_ACTION_NONE1
+                ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
+                if (Globals.filterAction == 1) {
+                  ClassifyOut->actionType = FWP_ACTION_CONTINUE;
+                } else if (Globals.filterAction == 2) {
+                  ClassifyOut->actionType = FWP_ACTION_PERMIT;
+                } else if (Globals.filterAction == 3) {
+                  ClassifyOut->actionType = FWP_ACTION_BLOCK;
+                } else {
+                  ClassifyOut->actionType = FWP_ACTION_NONE;
+                }
+                break;
+            }
+
+          // We reset Status so we don't hit the error handling path at the end
+          // because we want this to return in a "bad" state
           Status = STATUS_SUCCESS;
           InterlockedIncrement(&gCallsToClone);
         }
-    }
-    else if (Globals.version == 2)
-    {
-        // Version 2 of the driver, we have load A (the fibonacci loop below)
-        // and a call to FwpsCloneStreamData with NULL as the first input.
-        // We properly handle the error that is returned.
-         Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
-        if (Status != STATUS_SUCCESS) {
-          ClassifyOut->actionType = FWP_ACTION_BLOCK;
-          ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
-          ioPacket->countBytesEnforced = 0;
-          // We reset Status so we don't hit the error handling path at the end
-          // because we want this to return in a "bad" state
-          InterlockedIncrement(&gCallsToClone);
-        }
-    }
-    else if (Globals.version == 3)
-    {
-        // Version 3 of the driver, we have load A (the fibonacci loop below)
-        // and a proper call to the FwpsCloneStreamData with streamData as the input
 
-        Status = FwpsCloneStreamData(streamData, NULL, NULL, 0, &ClonedNbl);
-        if (Status == STATUS_SUCCESS) {
-            // We are not using the clone so we immediately free it.
-          FwpsFreeCloneNetBufferList(ClonedNbl, 0);
-          InterlockedIncrement(&gCallsToClone);
-        }
-    }
-    else if (Globals.version == 4)
-    {
-      if (gCallsToClone % 1000 == 0)
-      {
-        Status = FwpsCloneStreamData(NULL, NULL, NULL, 0, &ClonedNbl);
-      }
-      else
-      {
-        Status = FwpsCloneStreamData(streamData, NULL, NULL, 0, &ClonedNbl);
-        if (Status == STATUS_SUCCESS) {
-          // We are not using the clone so we immediately free it.
-          FwpsFreeCloneNetBufferList(ClonedNbl, 0);
-        }
-      }
-
-      if (Status != STATUS_SUCCESS) 
-      {
-        ClassifyOut->actionType = FWP_ACTION_BLOCK;
-        ioPacket->streamAction = FWPS_STREAM_ACTION_NONE;
-        streamData->dataLength = 0;
-        ioPacket->countBytesEnforced = 0;
-        // We reset Status so we don't hit the error handling path at the end
-        // because we want this to return in a "bad" state
-        Status = STATUS_SUCCESS;
-      }
-      InterlockedIncrement(&gCallsToClone);
     }
 
     // Version 0 is below - it is the default case and Load A in every other case
@@ -398,14 +376,14 @@ InlineEditClassify(
     while (j < (int)Globals.crashLoop) { 
 
       int target = fibonacci(j);
-       DbgPrintEx(
-           DPFLTR_IHVNETWORK_ID,
-           DPFLTR_ERROR_LEVEL,
-           " !!!! PerformBasicStreamInjection "
-           ": fibs "
-           "[status: %#x], j == %d\n",
-           target,
-           j);
+      if (j % 100 == 0)
+      {
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+                   " !!!! PerformBasicStreamInjection "
+                   ": fibs "
+                   "[status: %#x], j == %d\n",
+                   target, j);
+      }
       j++;
     }
     KeReleaseInStackQueuedSpinLock(&lockHandle);
@@ -418,7 +396,7 @@ InlineEditClassify(
       gMaxTicks = elapsedTicks;
     }
 
-    if (Globals.version == 1 || Globals.version == 2 || Globals.version == 4) {
+    if (Globals.version >= 1) {
       goto Exit;
     }
 

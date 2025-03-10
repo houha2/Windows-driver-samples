@@ -337,6 +337,12 @@ typedef struct _STMEDIT_GLOBALS
 
     DWORD version;
 
+    DWORD bytesEnforced;
+
+    DWORD action;
+
+    DWORD filterAction;
+
 } STMEDIT_GLOBALS;
 
 

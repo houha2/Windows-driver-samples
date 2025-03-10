@@ -339,8 +339,9 @@ StreamEditCommonStreamClassify(
     //
     StmEditReferenceFlow(FlowContext, _MODULE_ID, __LINE__);
 
- //   if (FlowContext->bEditInline || TRUE) 
- //   {
+    /*
+    if (FlowContext->bEditInline) 
+    {
         InlineEditClassify(
             InFixedValues,
             InMetaValues,
@@ -349,9 +350,9 @@ StreamEditCommonStreamClassify(
 			InFlowContext,
             ClassifyOut
             );
-  /*  }
+    }
     else
-    {
+    {*/
         OobEditClassify (
             InFixedValues,
             InMetaValues,
@@ -360,7 +361,7 @@ StreamEditCommonStreamClassify(
 			InFlowContext,
             ClassifyOut
             );
-    }*/
+  //  }
 
     StmEditDeReferenceFlow(FlowContext, _MODULE_ID, __LINE__);
 }
@@ -1105,6 +1106,9 @@ StreamEditInitConfig(
     DECLARE_CONST_UNICODE_STRING(inspectionDirectionKey, L"InspectionDirection");
     DECLARE_CONST_UNICODE_STRING(crashLoopKey, L"CrashLoop");
     DECLARE_CONST_UNICODE_STRING(versionKey, L"Version");
+    DECLARE_CONST_UNICODE_STRING(bytesKey, L"Bytes");
+    DECLARE_CONST_UNICODE_STRING(actionKey, L"Action");
+    DECLARE_CONST_UNICODE_STRING(filterActionKey, L"Filter");
     DECLARE_CONST_UNICODE_STRING(thresholdKey, L"BusyThreshold");
 
 
@@ -1158,6 +1162,18 @@ StreamEditInitConfig(
 
 	    if (NT_SUCCESS( WdfRegistryQueryULong(hKey, &versionKey, &ulongValue))) {
           Globals.version = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &bytesKey, &ulongValue))) {
+          Globals.bytesEnforced = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &actionKey, &ulongValue))) {
+          Globals.action = (DWORD)ulongValue;
+        }
+
+	    if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &filterActionKey, &ulongValue))) {
+          Globals.filterAction = (DWORD)ulongValue;
         }
 
 		if (NT_SUCCESS(WdfRegistryQueryULong(hKey, &multiCalloutKey, &ulongValue)))
